@@ -21,98 +21,110 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 
-class WebController():
-
-    # TODO: Manejar manipulación de múltiples ventanas
-    
-    # TODO: Crear una interfáz que permita definir si la clase se usa en una computadora Windows o MAC. Por ejemplo, el downloads_path por defecto es "C:\\Users\\{self.pc_user}\\Downloads". Si un usuario de MAC usa esto, el código truena. Yo me imagino que lo apropiado sería crear un tipo de clase que describa un sistema operativo, y asó establecer un pa´rametro para indicar cuál S.O. se usa y trabajar en base a ello.
-    
     # TODO: Crear una interfáz o clase que permita definir algunos atributos estáticos de cada navegador, como el comando para obtener el driver de Edge y Chrome
+    
+class WebController():
     browsers_allowed = [ 'Google', 'Edge' ]
 
-    def __init__(self, browser_name, profile=None, headless=False, downloads_path="") -> None:
+    def __init__(self, browser_name, os_obj: OperatingSystem, profile=None, headless=False, downloads_path="") -> None:
         """
-            WebController constructor.
-            
-            PARAMS:
-            - browser(str): This is the web browser to be used (Google or Edge).
-            - profile(str): Is the name of the profile in the “SelemiumProfiles” folder.
-            - headless(bool): Is the browser mode where the user interface is not shown. True if you don't want to see the browser window.
-            - downloads_path (str): Is the absolute path where the downloaded files will be stored.
+        Constructor de WebController.
+        
+        Parámetros:
+          - browser_name (str): "Google" o "Edge".
+          - os_obj (OperatingSystem): Instancia de WindowsOS o MacOS.
+          - profile (str): Nombre del perfil a utilizar.
+          - headless (bool): Modo sin interfaz gráfica.
+          - downloads_path (str): Ruta personalizada para descargas (opcional).
         """
-        self.driver_path =  os.getcwd()
+        self.os_obj = os_obj
         self.browser_name = browser_name
-        self.pc_user = getpass.getuser()
         self.profile = profile
         self.browser = None
-        self.options = ""
+        self.options = None
         self.driver_version = None
-        self.default_downloads_path = f"C:\\Users\\{self.pc_user}\\Downloads"
+        self.pc_user = os_obj.user
+        
+        # Se obtiene el directorio de descargas por defecto a partir del S.O.
+        self.default_downloads_path = self.os_obj.downloads_path
         self.downloads_path = downloads_path if downloads_path else self.default_downloads_path
-
+        
+        # Definir la ruta del driver usando el método del S.O.
+        self.driver_path = os.path.join(os.getcwd(), self.os_obj.get_driver_executable(browser_name))
+        
         try:
-            if self.browser_name in self.browsers_allowed:
-                if self.browser_name == "Google":
+            if browser_name in self.browsers_allowed:
+                if browser_name == "Google":
                     self.options = webdriver.ChromeOptions()
-                    self.driver_path = self.driver_path+r"\chromedriver.exe"
-                    # self.service = Service(self.driver_path)
-                    command = r'(Get-Item "C:\Program Files\Google\Chrome\Application\chrome.exe").VersionInfo.ProductVersion'
-                    # self.driver_version = self.get_driver_version(command)
-                    if self.profile is None:
-                        self.options.add_argument(f'user-data-dir=C:\\Users\\{self.pc_user}\\AppData\\Local\\Google\\Chrome\\User Data')
+                    # Configuración del perfil (según S.O.)
+                    if profile is None:
+                        if isinstance(self.os_obj, WindowsOS):
+                            self.options.add_argument(
+                                f'user-data-dir=C:\\Users\\{self.pc_user}\\AppData\\Local\\Google\\Chrome\\User Data'
+                            )
+                        else:
+                            self.options.add_argument(
+                                f'user-data-dir=/Users/{self.pc_user}/Library/Application Support/Google/Chrome'
+                            )
                         self.options.add_argument("--profile-directory=Default")
                     else:
-                        self.options.add_argument(f'user-data-dir=C:/SeleniumProfiles/{self.profile}')
-                        self.options.add_argument(f"--profile-directory={self.profile}")
-                elif self.browser_name == "Edge":
+                        self.options.add_argument(
+                            f'user-data-dir={os.path.join("SeleniumProfiles", profile)}'
+                        )
+                        self.options.add_argument(f"--profile-directory={profile}")
+                elif browser_name == "Edge":
                     self.options = webdriver.EdgeOptions()
-                    self.driver_path = self.driver_path+r"\msedgedriver.exe"
-                    # self.service = Service(self.driver_path)
-                    command = r'(Get-Item "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe").VersionInfo.ProductVersion'
-                    # self.driver_version = self.get_driver_version(command)
-                    if self.profile is None:
-                        self.options.add_argument(f'user-data-dir=C:\\Users\\{self.pc_user}\\AppData\\Local\\Microsoft\\Edge\\User')
+                    if profile is None:
+                        if isinstance(self.os_obj, WindowsOS):
+                            self.options.add_argument(
+                                f'user-data-dir=C:\\Users\\{self.pc_user}\\AppData\\Local\\Microsoft\\Edge\\User'
+                            )
+                        else:
+                            self.options.add_argument(
+                                f'user-data-dir=/Users/{self.pc_user}/Library/Application Support/Microsoft Edge'
+                            )
                         self.options.add_argument("--profile-directory=Default")
                     else:
-                        self.options.add_argument(f'user-data-dir=C:/SeleniumProfiles/{self.profile}')
+                        self.options.add_argument(
+                            f'user-data-dir={os.path.join("SeleniumProfiles", profile)}'
+                        )
                         self.options.add_argument("--profile-directory=Default")
             else:
-                print("The navigator selected isn´t valid. Check the browser available list: ")
+                print("El navegador seleccionado no es válido. Navegadores permitidos:", self.browsers_allowed)
                 return
             
-            # # Common atributtes values
+            # Configuración común
             self.service = Service(self.driver_path)
+            command = self.os_obj.get_driver_command(browser_name)
             self.driver_version = self.get_driver_version(command)
-        
-            self.__download_web_driver()
+            
+            # Si el driver no existe en la ruta, se procede a descargarlo
+            if not os.path.exists(self.driver_path):
+                self.__download_web_driver()
         except Exception as e:
+            print('Error initializing the class')
             print(e)
-
-        if headless: #To activate the headless mode if it's True
+        
+        if headless:
             self.options.add_argument("--headless")
         
-        if downloads_path: #Add the path to a specific folder where the downloaded files are going to be stored
-            self.downloads_path = downloads_path
-            # print("Dwn path 1", self.downloads_path)
-            self.options.add_experimental_option("prefs", {
-                "safebrowsing.enabled": True,
-                #"profile.default_content_setting_values.automatic_downloads": 1,  #Allows automatic downloads (if necessary)
-                "download.prompt_for_download": False,  # Evitar preguntar dónde guardar cada archivo
-                "download.directory_upgrade": True,  # Permitir cambiar la carpeta de descargas
+        # Configuración de preferencias de descarga
+        prefs = {
+            "safebrowsing.enabled": True,
+            "safebrowsing.disable_download_protection": False,
+        }
+        if downloads_path:
+            prefs.update({
+                "download.prompt_for_download": True,
+                "download.directory_upgrade": True,
                 "download.default_directory": self.downloads_path,
-                "safebrowsing.disable_download_protection": False,  #Maintain download protection to review xml and download them without any problem.
             })
         else:
-            self.downloads_path = f"C:\\Users\\{self.pc_user}\\Downloads"
-            # print("Dwn path 2", self.downloads_path)
-            self.options.add_experimental_option("prefs", {
-                "safebrowsing.enabled": True,
-                "safebrowsing.disable_download_protection": False,  #Maintain download protection to review xml and download them without any problem.
-                "profile.default_content_setting_values.automatic_downloads": 1,  #Allows automatic downloads (if necessary)
+            prefs.update({
+                "profile.default_content_setting_values.automatic_downloads": 1,
                 "download.default_directory": self.downloads_path,
             })
-        
-
+        self.options.add_experimental_option("prefs", prefs)
         self.options.add_argument("--start-maximized")
         self.options.add_experimental_option('excludeSwitches', ['enable-logging'])
     
@@ -125,29 +137,6 @@ class WebController():
                 self.browser = webdriver.Edge(service=self.service, options=self.options)
         self.browser.get(url)
     
-    # def set_download_path(self, path):
-    #     """Set the download path for the browser."""
-    #     self.options.add_experimental_option("prefs", {
-    #         "safebrowsing.enabled": True,
-    #         "download.prompt_for_download": False,
-    #         "download.directory_upgrade": True,
-    #         "download.default_directory": path,
-    #         "safebrowsing.disable_download_protection": False,
-    #     })
-    #     print(f"Download path set to: {path}")
-
-    # def reset_download_path(self):
-    #     """Reset the download path to its default."""
-    #     self.set_download_path(self.default_downloads_path)
-    #     print(f"Download path reset to default: {self.default_downloads_path}")
-
-    # def quit(self):
-    #     """Quit the browser and reset download path."""
-    #     if self.browser:
-    #         self.reset_download_path()  # Restore default settings
-    #         self.browser.quit()
-    #         self.browser = None
-
     def openNewWindow(self, url=None):
         """
         Abre una nueva ventana del navegador.
@@ -185,12 +174,14 @@ class WebController():
             print("No browser instance found. Please start the browser first.")
 
     def close_window(self):
-        """Closes the instance of selenium/webdriver"""
+        """
+        Closes the instance of selenium/webdriver
+        """
         if self.browser:
             try:
-                self.browser.quit()  #To close WebDriver if exists
+                self.browser.quit()
             except Exception as close_error:
-                print(f"Error al cerrar el WebDriver de {self.browser}: {close_error}")
+                print(f"Error closing web driver: {self.browser}: {close_error}")
         print("Session and window closed")
 
     def openNewTab(self, url):
@@ -239,103 +230,6 @@ class WebController():
 
     def changePage(self, url):
         self.browser.get(url)
-    
-    # TODO: Checar si se puede agregar un decorador para no escribir tantas veces un try catch
-
-    def click_button_by_id(self, itemId : str, timeout : int = 60):
-        '''
-        Search a button by the id and then click it 
-        '''
-        try:
-            button = WebDriverWait(self.browser, timeout).until(EC.element_to_be_clickable((By.ID, itemId)))
-            button.click()
-        except:
-            print(f'Couldn´t find a button with the id: {itemId}')
-    
-    def click_button_by_classname(self, itemClass : str, timeout : int = 60):
-        '''
-        Search a button by the class name and then click it 
-        '''
-        try:
-            button = WebDriverWait(self.browser, timeout).until(EC.element_to_be_clickable((By.CLASS_NAME, itemClass)))
-            button.click()
-        except:
-            print(f'Couldn´t find a button with the class: {itemClass}')
-           
-    def click_button_by_xpath(self, itemxPath : str, timeout : int = 60):
-        '''
-        Search a button by the XPath and then click it 
-        '''
-        try:
-            button = WebDriverWait(self.browser, timeout).until(EC.element_to_be_clickable((By.XPATH, itemxPath)))
-            button.click()
-        except:
-            print(f'Couldn´t find a button with the Xpath: {itemxPath}')
-    
-    def click_button_by_css_selector(self, itemxCss : str, timeout : int = 60):
-        '''
-        Search a button by the CSS and then click it 
-        '''
-        try:
-            button = WebDriverWait(self.browser, timeout).until(EC.element_to_be_clickable((By.CSS_SELECTOR, itemxCss)))
-            button.click()
-        except:
-            print(f'Couldn´t find a button with the Xpath: {itemxCss}')
-    
-    def get_web_element_by_tagname(self, itam_tagname: str, timeout : int = 60) -> WebElement:
-        try:
-            element = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.TAG_NAME, itam_tagname)))
-            return element
-        except:
-            print(f'Coludn´t find the element with the id {itam_tagname}')        
-    
-    def get_web_element_by_id(self, itemId: str, timeout : int = 60) -> WebElement:
-        try:
-            element = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.ID, itemId)))
-            return element
-        except:
-            print(f'Coludn´t find the element with the id {itemId}')
-            
-    def get_web_element_by_class_name(self, itemClass: str, timeout : int = 60) -> WebElement:
-        try:
-            element = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.CLASS_NAME, itemClass)))
-            return element
-        except:
-            print(f'Coludn´t find the element with the class {itemClass}')
-
-    def get_web_element_by_xpath(self, itemxPath, timeout : int = 60):
-        try:
-            item = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.XPATH, itemxPath)))
-            return item
-        except:
-            print(f'Coludn´t find the element with the xpath {itemxPath}')
-        
-    def get_web_element_by_css_selector(self, itemCss: str, timeout : int = 60) -> WebElement:
-        try:
-            element = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.CSS_SELECTOR, itemCss)))
-            return element
-        except:
-            print(f'Coludn´t find the element with the css selector {itemCss}')    
-
-    def write(self, item, text):
-        item.send_keys(text)
-    
-    def eraseAndWrite(self, item, text):
-        item.clear()
-        item.send_keys(text)
-
-    def writeAndTab(self, item, text):
-        item.send_keys(text)
-        item.send_keys(Keys.TAB)
-
-    def writeAndEnter(self, item, text):
-        item.send_keys(text)
-        item.send_keys(Keys.ENTER)
-
-    def switchToFrame(self, frame, timeout):
-        # self.browser.switch_to.frame(frame)
-        WebDriverWait(self.browser, timeout).until(EC.frame_to_be_available_and_switch_to_it((By.NAME, frame)))
-        print(f"Se cambio a {frame}")
     
     def get_driver_version(self, command):
         try:
@@ -444,3 +338,98 @@ class WebController():
         
         while True:
             yield "No more profiles available"
+
+    def click_button_by_id(self, itemId : str, timeout : int = 60):
+        '''
+        Search a button by the id and then click it 
+        '''
+        try:
+            button = WebDriverWait(self.browser, timeout).until(EC.element_to_be_clickable((By.ID, itemId)))
+            button.click()
+        except:
+            print(f'Couldn´t find a button with the id: {itemId}')
+    
+    def click_button_by_classname(self, itemClass : str, timeout : int = 60):
+        '''
+        Search a button by the class name and then click it 
+        '''
+        try:
+            button = WebDriverWait(self.browser, timeout).until(EC.element_to_be_clickable((By.CLASS_NAME, itemClass)))
+            button.click()
+        except:
+            print(f'Couldn´t find a button with the class: {itemClass}')
+           
+    def click_button_by_xpath(self, itemxPath : str, timeout : int = 60):
+        '''
+        Search a button by the XPath and then click it 
+        '''
+        try:
+            button = WebDriverWait(self.browser, timeout).until(EC.element_to_be_clickable((By.XPATH, itemxPath)))
+            button.click()
+        except:
+            print(f'Couldn´t find a button with the Xpath: {itemxPath}')
+    
+    def click_button_by_css_selector(self, itemxCss : str, timeout : int = 60):
+        '''
+        Search a button by the CSS and then click it 
+        '''
+        try:
+            button = WebDriverWait(self.browser, timeout).until(EC.element_to_be_clickable((By.CSS_SELECTOR, itemxCss)))
+            button.click()
+        except:
+            print(f'Couldn´t find a button with the Xpath: {itemxCss}')
+    
+    def get_web_element_by_tagname(self, itam_tagname: str, timeout : int = 60) -> WebElement:
+        try:
+            element = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.TAG_NAME, itam_tagname)))
+            return element
+        except:
+            print(f'Coludn´t find the element with the id {itam_tagname}')        
+    
+    def get_web_element_by_id(self, itemId: str, timeout : int = 60) -> WebElement:
+        try:
+            element = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.ID, itemId)))
+            return element
+        except:
+            print(f'Coludn´t find the element with the id {itemId}')
+            
+    def get_web_element_by_class_name(self, itemClass: str, timeout : int = 60) -> WebElement:
+        try:
+            element = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.CLASS_NAME, itemClass)))
+            return element
+        except:
+            print(f'Coludn´t find the element with the class {itemClass}')
+
+    def get_web_element_by_xpath(self, itemxPath, timeout : int = 60):
+        try:
+            item = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.XPATH, itemxPath)))
+            return item
+        except:
+            print(f'Coludn´t find the element with the xpath {itemxPath}')
+        
+    def get_web_element_by_css_selector(self, itemCss: str, timeout : int = 60) -> WebElement:
+        try:
+            element = WebDriverWait(self.browser, timeout).until(EC.presence_of_element_located((By.CSS_SELECTOR, itemCss)))
+            return element
+        except:
+            print(f'Coludn´t find the element with the css selector {itemCss}')    
+
+    def write(self, item, text):
+        item.send_keys(text)
+    
+    def eraseAndWrite(self, item, text):
+        item.clear()
+        item.send_keys(text)
+
+    def writeAndTab(self, item, text):
+        item.send_keys(text)
+        item.send_keys(Keys.TAB)
+
+    def writeAndEnter(self, item, text):
+        item.send_keys(text)
+        item.send_keys(Keys.ENTER)
+
+    def switchToFrame(self, frame, timeout):
+        # self.browser.switch_to.frame(frame)
+        WebDriverWait(self.browser, timeout).until(EC.frame_to_be_available_and_switch_to_it((By.NAME, frame)))
+        print(f"Se cambio a {frame}")
