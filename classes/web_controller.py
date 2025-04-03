@@ -26,105 +26,89 @@ from selenium.webdriver.common.action_chains import ActionChains
 class WebController():
     browsers_allowed = [ 'Google', 'Edge' ]
 
-    def __init__(self, browser_name, os_obj: OperatingSystem, profile=None, headless=False, downloads_path="") -> None:
+    def __init__(self, browser_name, profile=None, headless=False, downloads_path="") -> None:
         """
-        Constructor de WebController.
-        
-        Parámetros:
-          - browser_name (str): "Google" o "Edge".
-          - os_obj (OperatingSystem): Instancia de WindowsOS o MacOS.
-          - profile (str): Nombre del perfil a utilizar.
-          - headless (bool): Modo sin interfaz gráfica.
-          - downloads_path (str): Ruta personalizada para descargas (opcional).
+            WebController constructor.
+            
+            PARAMS:
+            - browser(str): This is the web browser to be used (Google or Edge).
+            - profile(str): Is the name of the profile in the “SelemiumProfiles” folder.
+            - headless(bool): Is the browser mode where the user interface is not shown. True if you don't want to see the browser window.
+            - downloads_path (str): Is the absolute path where the downloaded files will be stored.
         """
-        self.os_obj = os_obj
+        self.driver_path =  os.getcwd()
         self.browser_name = browser_name
+        self.pc_user = getpass.getuser()
         self.profile = profile
         self.browser = None
-        self.options = None
+        self.options = ""
         self.driver_version = None
-        self.pc_user = os_obj.user
-        
-        # Se obtiene el directorio de descargas por defecto a partir del S.O.
-        self.default_downloads_path = self.os_obj.downloads_path
+        self.default_downloads_path = f"C:\\Users\\{self.pc_user}\\Downloads"
         self.downloads_path = downloads_path if downloads_path else self.default_downloads_path
-        
-        # Definir la ruta del driver usando el método del S.O.
-        self.driver_path = os.path.join(os.getcwd(), self.os_obj.get_driver_executable(browser_name))
-        
+
         try:
-            if browser_name in self.browsers_allowed:
-                if browser_name == "Google":
+            if self.browser_name in self.browsers_allowed:
+                if self.browser_name == "Google":
                     self.options = webdriver.ChromeOptions()
-                    # Configuración del perfil (según S.O.)
-                    if profile is None:
-                        if isinstance(self.os_obj, WindowsOS):
-                            self.options.add_argument(
-                                f'user-data-dir=C:\\Users\\{self.pc_user}\\AppData\\Local\\Google\\Chrome\\User Data'
-                            )
-                        else:
-                            self.options.add_argument(
-                                f'user-data-dir=/Users/{self.pc_user}/Library/Application Support/Google/Chrome'
-                            )
+                    self.driver_path = self.driver_path+r"\chromedriver.exe"
+                    # self.service = Service(self.driver_path)
+                    command = r'(Get-Item "C:\Program Files\Google\Chrome\Application\chrome.exe").VersionInfo.ProductVersion'
+                    # self.driver_version = self.get_driver_version(command)
+                    if self.profile is None:
+                        self.options.add_argument(f'user-data-dir=C:\\Users\\{self.pc_user}\\AppData\\Local\\Google\\Chrome\\User Data')
                         self.options.add_argument("--profile-directory=Default")
                     else:
-                        self.options.add_argument(
-                            f'user-data-dir={os.path.join("SeleniumProfiles", profile)}'
-                        )
-                        self.options.add_argument(f"--profile-directory={profile}")
-                elif browser_name == "Edge":
+                        self.options.add_argument(f'user-data-dir=C:/SeleniumProfiles/{self.profile}')
+                        self.options.add_argument(f"--profile-directory={self.profile}")
+                elif self.browser_name == "Edge":
                     self.options = webdriver.EdgeOptions()
-                    if profile is None:
-                        if isinstance(self.os_obj, WindowsOS):
-                            self.options.add_argument(
-                                f'user-data-dir=C:\\Users\\{self.pc_user}\\AppData\\Local\\Microsoft\\Edge\\User'
-                            )
-                        else:
-                            self.options.add_argument(
-                                f'user-data-dir=/Users/{self.pc_user}/Library/Application Support/Microsoft Edge'
-                            )
+                    self.driver_path = self.driver_path+r"\msedgedriver.exe"
+                    # self.service = Service(self.driver_path)
+                    command = r'(Get-Item "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe").VersionInfo.ProductVersion'
+                    # self.driver_version = self.get_driver_version(command)
+                    if self.profile is None:
+                        self.options.add_argument(f'user-data-dir=C:\\Users\\{self.pc_user}\\AppData\\Local\\Microsoft\\Edge\\User')
                         self.options.add_argument("--profile-directory=Default")
                     else:
-                        self.options.add_argument(
-                            f'user-data-dir={os.path.join("SeleniumProfiles", profile)}'
-                        )
+                        self.options.add_argument(f'user-data-dir=C:/SeleniumProfiles/{self.profile}')
                         self.options.add_argument("--profile-directory=Default")
             else:
-                print("El navegador seleccionado no es válido. Navegadores permitidos:", self.browsers_allowed)
+                print("The navigator selected isn´t valid. Check the browser available list: ")
                 return
             
-            # Configuración común
+            # # Common atributtes values
             self.service = Service(self.driver_path)
-            command = self.os_obj.get_driver_command(browser_name)
             self.driver_version = self.get_driver_version(command)
-            
-            # Si el driver no existe en la ruta, se procede a descargarlo
-            if not os.path.exists(self.driver_path):
+        
+            if "chromedriver.exe" not in os.listdir(os.getcwd()):
                 self.__download_web_driver()
         except Exception as e:
-            print('Error initializing the class')
             print(e)
-        
-        if headless:
+
+        if headless: #To activate the headless mode if it's True
             self.options.add_argument("--headless")
         
-        # Configuración de preferencias de descarga
-        prefs = {
-            "safebrowsing.enabled": True,
-            "safebrowsing.disable_download_protection": False,
-        }
-        if downloads_path:
-            prefs.update({
-                "download.prompt_for_download": True,
-                "download.directory_upgrade": True,
+        if downloads_path: #Add the path to a specific folder where the downloaded files are going to be stored
+            self.downloads_path = downloads_path
+
+            self.options.add_experimental_option("prefs", {
+                "safebrowsing.enabled": True,
+                "download.prompt_for_download": True,  # Control the prompt that ask where to store files downloaded
+                
+                "download.directory_upgrade": True,  # Allow change the downloads folder
+                
                 "download.default_directory": self.downloads_path,
+                "safebrowsing.disable_download_protection": False,  # Maintain download protection to review xml and download them without any problem.
             })
         else:
-            prefs.update({
-                "profile.default_content_setting_values.automatic_downloads": 1,
+            self.downloads_path = f"C:\\Users\\{self.pc_user}\\Downloads"
+            self.options.add_experimental_option("prefs", {
+                "safebrowsing.enabled": True,
+                "safebrowsing.disable_download_protection": False,  # Maintain download protection to review xml and download them without any problem.
+                "profile.default_content_setting_values.automatic_downloads": 1,  #Allows automatic downloads (if necessary)
                 "download.default_directory": self.downloads_path,
             })
-        self.options.add_experimental_option("prefs", prefs)
+        
         self.options.add_argument("--start-maximized")
         self.options.add_experimental_option('excludeSwitches', ['enable-logging'])
     
@@ -348,6 +332,7 @@ class WebController():
             button.click()
         except:
             print(f'Couldn´t find a button with the id: {itemId}')
+    # TODO: Checar si se puede agregar un decorador para no escribir tantas veces un try catch
     
     def click_button_by_classname(self, itemClass : str, timeout : int = 60):
         '''
